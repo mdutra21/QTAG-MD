@@ -27,13 +27,10 @@ integer, intent(out) :: nbt
 real*8, dimension(1:nbt_max,1:ndof,1:4), intent(out) :: qpas
 complex*16, dimension(1:nbt_max), intent(out) :: c, co
 character(len=255) :: sobolfile
-logical :: cls_chk
 
 if (init.eq.'GRID') then
-  call classical_chk(cls_chk)
   if (cls_chk.eq..TRUE.) then
     call initialize_cls(nbt, qpas, c, co)
-    write(*,*) "SINGLE BASIS DETECTED - CLASSICAL BATH ASSUMED"
   else
     call initialize_grid(nbt, qpas, c, co)
   end if
@@ -55,7 +52,7 @@ real*8, dimension(1:nbt_max,1:ndof,1:4), intent(out) :: qpas
 complex*16, dimension(1:nbt_max), intent(out) :: c, co
 
 integer :: i, i1, i2, i3, i4, i5, i6, i7, i8, j, k, d, l
-real*8 :: x11, x12, x13, x2, x3, dq1, dq2, dq3
+real*8 :: x11, x12, x13, x2, x3, dq1, dq2, dq3, dqpm
 complex*16 :: normchk
 
 !Initialize the values of the basis coordinates, momenta, and alphas at the
@@ -94,20 +91,21 @@ else if (ndof.eq.2) then
   dq1=(x2-x11)/((nb(1)-1))
   x12=qwf(2)-dsqrt(-0.5d0/awf(2)*log(tol))
   x2=qwf(2)+dsqrt(-0.5d0/awf(2)*log(tol))
-!  dq2=(x2-x12)/((nb(2)-1))
+  dq2=(x2-x12)/((nb(2)-1))
 
-!  x12=qwf(2)-dsqrt(-0.5d0/awf(2)*log(tol))
-!  x2=qwf(2)+dsqrt(-0.5d0/awf(2)*log(tol))
-  dq2=(x2-x12)/20d0
-  x13=qwf(2)-dq2
+  x12=qwf(2)-dsqrt(-0.5d0/awf(2)*log(tol))
+  x2=qwf(2)+dsqrt(-0.5d0/awf(2)*log(tol))
+
+!  dq2=(x2-x12)/20d0
+!  x13=qwf(2)-dq2
   do i = 1, nb(1)
     do j = 1, nb(2)
       k = k+1
-!      qpas(k,1,1) = x11+(i-1)*dq1
-!      qpas(k,2,1) = x12+(j-1)*dq2
+      qpas(k,1,1) = x11+(i-1)*dq1
+      qpas(k,2,1) = x12+(j-1)*dq2
 
-      qpas(k,1,1)=x11+(i-1)*dq1
-      qpas(k,2,1)=x13+(j-1)*2d0*dq2
+!      qpas(k,1,1)=x11+(i-1)*dq1
+!      qpas(k,2,1)=x13+(j-1)*2d0*dq2
     end do
   end do
   else if (nb(2).eq.1) then
@@ -118,7 +116,6 @@ else if (ndof.eq.2) then
     do i = 1, nb(1)
       k = k+1
       qpas(k,1,1)=x11+(i-1)*dq1
-!      qpas(k,2,1)=-vcp*qpas(k,1,1)
       qpas(k,2,1)=qwf(2)
     end do
   else
@@ -136,13 +133,20 @@ else if (ndof.eq.3) then
   x13=qwf(3)-dsqrt(-0.5d0/awf(3)*log(tol))
   x3=qwf(3)+dsqrt(-0.5d0/awf(3)*log(tol))
   dq3=(x2-x13)/((nb(3)-1))
+
+  dqpm=(x2-x12)/15d0
+
   do i = 1, nb(1)
     do j = 1, nb(2)
       do l=1, nb(3)
         k=k+1
+!        qpas(k,1,1) = x11+(i-1)*dq1
+!        qpas(k,2,1) = x12+(j-1)*dq2
+!        qpas(k,3,1) = x13+(l-1)*dq3
+        
         qpas(k,1,1) = x11+(i-1)*dq1
-        qpas(k,2,1) = x12+(j-1)*dq2
-        qpas(k,3,1) = x13+(l-1)*dq3
+        qpas(k,2,1) = qwf(2)-dqpm+(j-1)*dqpm
+        qpas(k,3,1) = qwf(3)-dqpm+(l-1)*dqpm
       end do
     end do
   end do
@@ -211,6 +215,12 @@ else if (ndof.eq.6) then
 end if
 
 nbt = k
+!nbt=69
+!open(55,file='sachith_basis.txt')
+!do k=1,nbt
+!  read(55,*) i, qpas(k,1,1), qpas(k,2,1)
+!end do
+!close (55)
 
 open(111,file='coords.txt')
 do k=1,nbt
@@ -232,7 +242,7 @@ real*8, dimension(1:nbt_max,1:ndof,1:4), intent(out) :: qpas
 complex*16, dimension(1:nbt_max), intent(out) :: c, co
 
 integer :: i, k, n
-real*8 :: x11, x2, dq1
+real*8 :: x11, x2, dq1, ap
 
 do n=1,ndof
   qpas(:,n,2)=pwf(n)
@@ -240,21 +250,79 @@ do n=1,ndof
   qpas(:,n,4)=0d0
 end do
 
-x11=qwf(1)-dsqrt(-0.5d0/awf(1)*log(tol))
-x2=qwf(1)+dsqrt(-0.5d0/awf(1)*log(tol))
-dq1=(x2-x11)/((nb(1)-1))
+!----------------------------------------------------
+!x11=qwf(1)-dsqrt(-0.5d0/awf(1)*log(tol))
+!x2=qwf(1)+dsqrt(-0.5d0/awf(1)*log(tol))
+!dq1=(x2-x11)/((nb(1)-1))
+
+!k=0
+!do i = 1, nb(1)
+!  k = k+1
+!  qpas(k,1,1)=x11+(i-1)*dq1
+!  do n=2,ndof
+!    qpas(k,n,1)=-vcp*qpas(k,n-1,1)
+!!    qpas(k,n,1)=qwf(n)
+!  end do
+!end do
+!---------------------------------------------------
+ap=1d0
+do n=1,ndof
+ ap=ap*dsqrt((2d0*awf(n)))
+end do
+
+x11=qwf(1)-dsqrt(-0.5d0/awf(1)*log(pi**(ndof/2)*tol/ap))
+x2=qwf(1)+dsqrt(-0.5d0/awf(1)*log(pi**(ndof/2)*tol/ap))
+dq1=(x2/qwf(1)-x11/qwf(1))/((nb(1)-1))
 
 k=0
+!Basis off-axis for n>=2.
 do i = 1, nb(1)
   k = k+1
-  qpas(k,1,1)=x11+(i-1)*dq1
-  do n=2,ndof
-    qpas(k,n,1)=-vcp*qpas(k,n-1,1)
-!    qpas(k,n,1)=qwf(n)
+  do n=1,ndof
+    qpas(k,n,1)=qwf(n)*(x11/qwf(1)+(i-1)*dq1)
   end do
 end do
 
+!Basis along axes for n>=2.
+!do i=1,nb(1)
+!  k=k+1
+!  qpas(k,1,1)=qwf(1)*(x11/qwf(1)+(i-1)*dq1)
+!  do n=2,ndof
+!    qpas(k,n,1)=qwf(n)
+!  end do
+!end do
+
+!Static basis spanning full-space.
+!dq1=(xdim(1,2)-xdim(1,1))/nb(1)
+!do i=1,nb(1)
+!  k=k+1
+!  qpas(k,1,1)=xdim(1,1)+dq1*(k-1)
+!  do n=2,ndof
+!    qpas(k,n,1)=qwf(n)
+!  end do
+!end do
+
+!Attenuating basis width to potential for BM2.
+!do i=2,ndof
+!  qpas(:,i,3)=dsqrt(1d0+2d0*vcp*qpas(:,i,1))
+!end do
+
+!----TRYING VARIABLE a0 FOR BASIS FUNCTIONS------------
+!do i=1,k
+!  qpas(i,1,3)=a0(1)*exp(-0.1*(qpas(i,1,1)-qwf(1))**2)
+!  if (qpas(i,1,3).lt.awf(1)) qpas(i,1,3)=awf(1)
+!end do
+!do n=2,ndof
+!  qpas(:,n,3)=a0(n)
+!end do
+!do n=1,ndof
+!  qpas(:,n,2)=pwf(n)
+!  qpas(:,n,4)=0d0
+!end do
+!------------------------------------------------------
+
 nbt = k
+
 call initialize_coeffs(nbt, qpas(1:nbt,:,:), co(1:nbt), c(1:nbt))
 
 return
@@ -383,7 +451,7 @@ do n=1,nmax
       stop
     end if
 !Check the normalization...
-    call normalize(k, qpas(1:k,:,:), ctemp(1:k), nrm)
+    call normalize(k, qpas(1:k,:,:), ctemp(1:k), ov(1:k,1:k), nrm)
     if (0.9995.lt.nrm.and.nrm.lt.1.005) exit
 
     end if
@@ -459,20 +527,6 @@ call overlap(nbt,qpas(1:nbt,:,:),mat)
 call zhesv('U', nbt, 1, mat, nbt, ipiv, b, nbt, work, lwork, INFO)
 do k=1, nbt
   c(k) = b(k)
-end do
-
-return
-end subroutine
-
-subroutine classical_chk(cls_chk)
-
-logical, intent(out) :: cls_chk
-
-integer :: n
-
-cls_chk=.FALSE.
-do n=1,ndof
-  if (nb(n).eq.1) cls_chk=.TRUE.
 end do
 
 return

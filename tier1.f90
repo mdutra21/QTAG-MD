@@ -15,6 +15,7 @@
 module tier1
 
 use constants
+use potentials
 implicit none
 
 contains
@@ -58,26 +59,32 @@ end do
 return
 end subroutine
 !------------------------------------------------------------------------------
-subroutine overlap_max(nbt,ov)
+subroutine overlap_max(nbt,t,ov)
 
 integer, intent(in) :: nbt
+real*8, intent(in) :: t
 complex*16, dimension(1:nbt,1:nbt), intent(in) :: ov
 
 integer :: i, j
-real*8, dimension(1:nbt) :: ovmax
+real*8, dimension(1:nbt) :: ovmax, ovavg
 real*8, dimension(1:nbt,1:nbt) :: ov1
 
 ov1=(0d0)
 do j=1,nbt
-  do i=1,j
-    if (i.ne.j) then
-      ov1(i,j)=dsqrt(real(conjg(ov(i,j))*ov(i,j)))
-    end if
+  do i=1,nbt
+    ov1(i,j)=dsqrt(real(conjg(ov(i,j))*ov(i,j)))
   end do
 end do
 
+do i=1,nbt
+  ov1(i,i)=0d0
+end do
 ovmax=maxval(ov1,dim=1)
-write(407,*) (ovmax(i), i=1,nbt)
+ovavg=sum(ov1,dim=1)/dble(nbt-1)
+
+do i=1,nbt
+  write(407,*) t, ovmax(i), ovavg(i)
+end do
 
 return
 end subroutine
@@ -144,99 +151,112 @@ do n=1,ndof
   aqp=(ai*qi+aj*qj)
 
   KE=KE+(1d0/(2d0*ms(n)*as**2))*(2d0*im*ap*dq*dp-(ap*dq)**2+dp**2+ap*as)
+end do
 
-!Exact integration for quartic potential assuming fully real basis.
+call potcalc(qpasi,qpasj,V)
+
+!==============================================================================
+!!Exact integration for quartic potential assuming fully real basis.
+!!  if (n.eq.1) then
+!!    vc1=0.046145894861193144
+!!    vc2=-0.5
+!!  else
+!!    vc1=0d0
+!!    vc2=0.5d0
+!!  end if
+!!  V=V+(vc1*aqp**2+vc2*as**2)*aqp**2/as**4+3d0*vc1/as**2+(6d0*vc1*aqp**2+vc2*as**2)/as**3
+!!End quartic
+
+
+!!Exact integration for quartic potential (Batista Models) with QTAG bases.
 !  if (n.eq.1) then
-!    vc1=0.046145894861193144
-!    vc2=-0.5
+!!    vc1=0.046145894861193144
+!!    vc2=-0.5
+!    vc1=0d0
+!    vc2=0.5d0
 !  else
 !    vc1=0d0
 !    vc2=0.5d0
+!!    vc2=1d0
 !  end if
-!  V=V+(vc1*aqp**2+vc2*as**2)*aqp**2/as**4+3d0*vc1/as**2+(6d0*vc1*aqp**2+vc2*as**2)/as**3
-!End quartic
 
+!  qq=(ai*qi+aj*qj)/(ai+aj)
+!  pp=(pbi-pbj)/(ai+aj)
 
-!Exact integration for quartic potential with QTAG bases.
-  if (n.eq.1) then
-    vc1=0.046145894861193144
-    vc2=-0.5
-  else
-    vc1=0d0
-    vc2=0.5d0
-  end if
+!  V=V+vc1*((qq-im*pp)**4-pp**4)+6d0*vc1/(ai+aj)*(qq-im*pp)**2+3d0*vc1/(ai+aj)**2+vc2*(qq-im*pp)**2+vc2/(ai+aj)
+!!End QTAG.
 
-  qq=(ai*qi+aj*qj)/(ai+aj)
-  pp=(pbi-pbj)/(ai+aj)
+!!LHA for any potential
+!!  z=(ai*qi+aj*qj+im*(pbj-pbi))/(ai+aj)
 
-  V=V+vc1*((qq-im*pp)**4-pp**4)+6d0*vc1/(ai+aj)*(qq-im*pp)**2+3d0*vc1/(ai+aj)**2+vc2*(qq-im*pp)**2+vc2/(ai+aj)
-!End QTAG.
+!!  vv0=vx(qj,n)-dvx(qj,n)*qj+d2vx(qj,n)/2d0*qj**2
+!!  vv1=-d2vx(qj,n)*qj+dvx(qj,n)
+!!  vv2=d2vx(qj,n)/2d0
+!!  vj=vj+vv0+vv1*z+vv2*(z**2+1d0/(ai+aj))
 
-!LHA for any potential
-!  z=(ai*qi+aj*qj+im*(pbj-pbi))/(ai+aj)
+!!  vv0=vx(qi,n)-dvx(qi,n)*qi+d2vx(qi,n)/2d0*qi**2
+!!  vv1=-d2vx(qi,n)*qi+dvx(qi,n)
+!!  vv2=d2vx(qi,n)/2d0
+!!  vi=vi+vv0+vv1*z+vv2*(z**2+1d0/(ai+aj))
+!!END LHA
+!end do
 
-!  vv0=vx(qj,n)-dvx(qj,n)*qj+d2vx(qj,n)/2d0*qj**2
-!  vv1=-d2vx(qj,n)*qj+dvx(qj,n)
-!  vv2=d2vx(qj,n)/2d0
-!  vj=vj+vv0+vv1*z+vv2*(z**2+1d0/(ai+aj))
+!if (ndof.gt.1) then
+!  do n=1,ndof-1
+!!BATISTA MODEL 1
+!    xid1=qpasi(1,n,1)
+!    xjd1=qpasj(1,n,1)
+!    pbid1=qpasi(1,n,2)
+!    pbjd1=qpasj(1,n,2)
+!    aid1=qpasi(1,n,3)
+!    ajd1=qpasj(1,n,3)
+!!END MODEL 1
+!!BATISTA MODEL 2
+!!    xid1=qpasi(1,1,1)
+!!    xjd1=qpasj(1,1,1)
+!!    pbid1=qpasi(1,1,2)
+!!    pbjd1=qpasj(1,1,2)
+!!    aid1=qpasi(1,1,3)
+!!    ajd1=qpasj(1,1,3)
+!!END MODEL 2
+!    xid2=qpasi(1,n+1,1)
+!    xjd2=qpasj(1,n+1,1)
+!    pbid2=qpasi(1,n+1,2)
+!    pbjd2=qpasj(1,n+1,2)
+!    aid2=qpasi(1,n+1,3)
+!    ajd2=qpasj(1,n+1,3)
 
-!  vv0=vx(qi,n)-dvx(qi,n)*qi+d2vx(qi,n)/2d0*qi**2
-!  vv1=-d2vx(qi,n)*qi+dvx(qi,n)
-!  vv2=d2vx(qi,n)/2d0
-!  vi=vi+vv0+vv1*z+vv2*(z**2+1d0/(ai+aj))
-!END LHA
-end do
+!!MODEL 1
+!    z1=(aid1*xid1+ajd1*xjd1-im*(pbid1-pbjd1))/(aid1+ajd1)
+!    z2=(aid2*xid2+ajd2*xjd2-im*(pbid2-pbjd2))/(aid2+ajd2)
+!    zz=z1*z2
 
-if (ndof.gt.1) then
-  do n=1,ndof-1
-!BATISTA MODEL 1
-    xid1=qpasi(1,n,1)
-    xjd1=qpasj(1,n,1)
-    pbid1=qpasi(1,n,2)
-    pbjd1=qpasj(1,n,2)
-    aid1=qpasi(1,n,3)
-    ajd1=qpasj(1,n,3)
-!END MODEL 1
-!BATISTA MODEL 2
-!    xid1=qpasi(1,1,1)
-!    xjd1=qpasj(1,1,1)
-!    pbid1=qpasi(1,1,2)
-!    pbjd1=qpasj(1,1,2)
-!    aid1=qpasi(1,1,3)
-!    ajd1=qpasj(1,1,3)
-!END MODEL 2
-    xid2=qpasi(1,n+1,1)
-    xjd2=qpasj(1,n+1,1)
-    pbid2=qpasi(1,n+1,2)
-    pbjd2=qpasj(1,n+1,2)
-    aid2=qpasi(1,n+1,3)
-    ajd2=qpasj(1,n+1,3)
+!!MODEL 2
+!!    z1=(aid1*xid1+ajd1*xjd1-im*(pbid1-pbjd1))/(aid1+ajd1)
+!!    z2=((aid2*xid2+ajd2*xjd2-im*(pbid2-pbjd2))/(aid2+ajd2))**2+1d0/(aid2+ajd2)
+!!    zz=z1*z2
 
-    z1=(aid1*xid1+ajd1*xjd1-im*(pbid1-pbjd1))/(aid1+ajd1)
-    z2=(aid2*xid2+ajd2*xjd2-im*(pbid2-pbjd2))/(aid2+ajd2)
-    zz=z1*z2
+!!FOR EXACT INTEGRAL
+!    V=V+vcp*zz
 
-!FOR EXACT INTEGRAL
-    V=V+vcp*zz
+!!FOR LHA OF COUPLED POTENTIAL
+!!    vv0=vcpl(xid1,xid2)
+!!    vv1=-d2vcpl(xid1,xid2)*z1*xid2-d2vcpl(xid1,xid2)*z2*xid1
+!!    vv2=d2vcpl(xid1,xid2)*zz
 
-!FOR LHA OF COUPLED POTENTIAL
-!    vv0=vcpl(xid1,xid2)
-!    vv1=-d2vcpl(xid1,xid2)*z1*xid2-d2vcpl(xid1,xid2)*z2*xid1
-!    vv2=d2vcpl(xid1,xid2)*zz
+!!    vi=vi+2d0*vv0+vv1+vv2
 
-!    vi=vi+2d0*vv0+vv1+vv2
+!!    vv0=vcpl(xjd1,xjd2)
+!!    vv1=-d2vcpl(xid1,xid2)*z1*xjd2-d2vcpl(xid1,xid2)*z2*xjd1
+!!    vv2=d2vcpl(xjd1,xjd2)*zz
 
-!    vv0=vcpl(xjd1,xjd2)
-!    vv1=-d2vcpl(xid1,xid2)*z1*xjd2-d2vcpl(xid1,xid2)*z2*xjd1
-!    vv2=d2vcpl(xjd1,xjd2)*zz
+!!    vj=vj+2d0*vv0+vv1+vv2
+!!END LHA
+!  end do
+!end if
 
-!    vj=vj+2d0*vv0+vv1+vv2
-!END LHA
-  end do
-end if
-
-!FOR LHA POTENTIAL
-!V=(vi+vj)/2d0
+!!FOR LHA POTENTIAL
+!!V=(vi+vj)/2d0
 
 return
 end subroutine
@@ -267,51 +287,26 @@ end do
 return
 end subroutine
 !------------------------------------------------------------------------------
-subroutine energy_calc(nbt, qpas, c, etot)
+subroutine energy_calc(nbt, c, H, etot)
 
 use constants
 
 integer, intent(in) :: nbt
-real*8, dimension(1:nbt,1:ndof,1:4), intent(inout) :: qpas
 complex*16, dimension(1:nbt), intent(in) :: c
+complex*16, dimension(1:nbt,1:nbt), intent(in) :: H
 real*8, intent(out) :: etot
-
-integer :: i, j, n
-real*8 :: fac, dq, dp, ds
-complex*16 :: zn, M, KE, KE1, V, V1
-
-complex*16, dimension(1:nbt,1:nbt) :: H
-
-do i=1,nbt
-  do j=1,nbt
-    M=(1d0,0d0)
-    KE=(0d0,0d0)
-    V=(0d0,0d0)
-    do n=1,ndof
-      fac=2d0*(qpas(i,n,3)*qpas(j,n,3))**0.25/dsqrt(2d0*qpas(i,n,3)+2d0*(qpas(j,n,3)))
-      dq=qpas(i,n,1)-qpas(j,n,1)
-      dp=qpas(i,n,2)-qpas(j,n,2)
-      ds=qpas(i,n,4)-qpas(j,n,4)
-      zn=dp**2+qpas(i,n,3)*qpas(j,n,3)*dq**2+2d0*im*(qpas(i,n,3)*(ds-qpas(j,n,2)*dq)+qpas(j,n,3)*(ds-qpas(i,n,2)*dq))
-      M = fac*M*exp(-zn/(2d0*(qpas(i,n,3)+qpas(j,n,3))))
-!      KE=KE+KE1
-!      V=V+V1
-    end do
-    call hamiltonian(qpas(i,:,:),qpas(j,:,:),KE,V)
-    H(i,j) = M*(KE+V)
-  end do
-end do
 
 etot = real(sum(matmul(reshape(conjg(c),(/1,nbt/)),matmul(H,c))))
 
 return
 end subroutine
 !----------------------------------------------------------------------------
-subroutine energy_comp(nbt, qpas, c, KE, V)
+subroutine energy_comp(nbt, qpas, c, ov, KE, V)
 
 integer, intent(in) :: nbt
 real*8, dimension(1:nbt,1:ndof,4), intent(in) :: qpas
 complex*16, dimension(1:nbt), intent(in) :: c
+complex*16, dimension(1:nbt,1:nbt), intent(in) :: ov
 complex*16, intent(out) :: KE, V
 
 integer :: i, j, n
@@ -324,21 +319,9 @@ do i=1,nbt
     M=(1d0,0d0)
     KE=(0d0,0d0)
     V=(0d0,0d0)
-    do n=1,ndof
-      fac=2d0*(qpas(i,n,3)*qpas(j,n,3))**0.25/dsqrt(2d0*qpas(i,n,3)+2d0*(qpas(j,n,3)))
-      dq=qpas(i,n,1)-qpas(j,n,1)
-      dp=qpas(i,n,2)-qpas(j,n,2)
-      ds=qpas(i,n,4)-qpas(j,n,4)
-      zn=dp**2+qpas(i,n,3)*qpas(j,n,3)*dq**2+2d0*im*(qpas(i,n,3)*(ds-qpas(j,n,2)*dq)+qpas(j,n,3)*(ds-qpas(i,n,2)*dq))
-      M = fac*M*exp(-zn/(2d0*(qpas(i,n,3)+qpas(j,n,3))))
-
-!      call hamiltonian(qpas(i,n,:),qpas(j,n,:),KE1,V1)
-!      KE=KE+KE1
-!      V=V+V1
-    end do
     call hamiltonian(qpas(i,:,:),qpas(j,:,:),KE,V)
-    HKE(i,j) = M*KE
-    HV(i,j) = M*V
+    HKE(i,j) = ov(i,j)*KE
+    HV(i,j) = ov(i,j)*V
   end do
 end do
 
@@ -420,24 +403,22 @@ end subroutine
 !return
 !end subroutine
 !----------------------------------------------------------------------------
-subroutine avg_pos(nbt, qpas, c, xavg)
+subroutine avg_pos(nbt, qpas, c, ov, xavg)
 
 integer, intent(in) :: nbt
 real*8, dimension(1:nbt,1:ndof,4), intent(in) :: qpas
 complex*16, dimension(1:nbt), intent(in) :: c
+complex*16, dimension(1:nbt,1:nbt), intent(in) :: ov
 real*8, dimension(1:ndof), intent(out) :: xavg
 
 integer :: i, j, n
 complex*16 :: mat
-complex*16, dimension(1:nbt,1:nbt) :: mat0
-
-call overlap(nbt,qpas,mat0)
 
 xavg=0d0
 do n=1,ndof
   do i=1,nbt
     do j=1,nbt
-      mat=mat0(i,j)*(qpas(i,n,1)+qpas(j,n,1))/2d0
+      mat=ov(i,j)*(qpas(i,n,1)+qpas(j,n,1))/2d0
       xavg(n)=xavg(n)+real(conjg(c(i))*mat*c(j))
     end do
   end do
@@ -446,18 +427,17 @@ end do
 return
 end subroutine
 !----------------------------------------------------------------------------
-subroutine normalize(nbt, qpas, c, nrm)
+subroutine normalize(nbt, qpas, c, ov, nrm)
 
 integer, intent(in) :: nbt
 real*8,intent(in),dimension(1:nbt,1:ndof,4) :: qpas
 complex*16, dimension(1:nbt), intent(in) :: c
+complex*16, dimension(1:nbt,1:nbt), intent(in) :: ov
 real*8, intent(out) :: nrm
 
 complex*16 :: z
-complex*16, dimension(1:nbt,1:nbt) :: mat
 
-call overlap(nbt, qpas, mat)
-z=sum(matmul(reshape(conjg(c),(/1,nbt/)),matmul(mat,c)))
+z=sum(matmul(reshape(conjg(c),(/1,nbt/)),matmul(ov,c)))
 nrm = real(z)
 
 return
@@ -473,12 +453,15 @@ complex*16, intent(out) :: zcorr, tcorr
 
 integer :: i, j
 real*8 :: dqz, dqt, awf1, asum, anorm, z0, z1, z2, t0, t1, t2
-complex*16, dimension(1:nbt) :: bz, bt
+complex*16 :: bz, bt
 
 zcorr = (0d0,0d0)
 tcorr = (0d0,0d0)
-!call overlap(nbt, qpas, mat)
+bz=(0d0,0d0)
+bt=(0d0,0d0)
 
+!For fully real basis
+!call overlap(nbt, qpas, mat)
 !do i=1, nbt
 !  do j=1, nbt
 !    zcorr = zcorr + c(i)*mat(i,j)*c(j)
@@ -498,21 +481,71 @@ do j=1,nbt
     dqt=qpas(j,i,1)+qwf(i)
     awf1=2d0*awf(i)
     asum=qpas(j,i,3)+awf1
-    anorm=anorm*(dsqrt(2d0)*(qpas(j,i,3)*awf1)**0.25/dsqrt(asum))
-    z0=z0-2d0*qpas(j,i,4)*asum
-    z1=z1+2d0*dqz*(qpas(j,i,3)*pwf(i)+awf1*qpas(j,i,2))
-    z2=z2+awf1*qpas(j,i,3)*dqz**2+(qpas(j,i,2)-pwf(i))**2
-    t0=t0-2d0*qpas(j,i,4)*asum
-    t1=t1+2d0*dqt*(qpas(j,i,3)*pwf(i)+awf1*qpas(j,i,2))
-    t2=t2+awf1*qpas(j,i,3)*dqt**2+(qpas(j,i,2)-pwf(i))**2
+    anorm=anorm*dsqrt(2d0*dsqrt(qpas(j,i,3)*awf1)/asum)
+!    z0=z0-2d0*qpas(j,i,4)*asum
+    z0=z0-qpas(j,i,4)
+!    z1=z1+2d0*dqz*(qpas(j,i,3)*pwf(i)+awf1*qpas(j,i,2))
+    z1=z1+dqz*(qpas(j,i,3)*pwf(i)+awf1*qpas(j,i,2))/asum
+!    z2=z2+awf1*qpas(j,i,3)*dqz**2+(qpas(j,i,2)-pwf(i))**2
+    z2=z2+(awf1*qpas(j,i,3)*dqz**2+(qpas(j,i,2)-pwf(i))**2)/(2d0*asum)
+!    t0=t0-2d0*qpas(j,i,4)*asum
+!    t1=t1+2d0*dqt*(qpas(j,i,3)*pwf(i)+awf1*qpas(j,i,2))
+!    t2=t2+awf1*qpas(j,i,3)*dqt**2+(qpas(j,i,2)-pwf(i))**2
+    t0=t0-qpas(j,i,4)
+    t1=t1+dqt*(qpas(j,i,3)*pwf(i)+awf1*qpas(j,i,2))/asum
+    t2=t2+(awf1*qpas(j,i,3)*dqt**2+(qpas(j,i,2)-pwf(i))**2)/(2d0*asum)
   end do
-  bz(j)=c(j)*anorm*exp(-(z2+im*(z0+z1))/(2d0*asum))
-  bt(j)=c(j)*anorm*exp(-(t2+im*(t0+t1))/(2d0*asum))
+  bz=bz+c(j)*anorm*exp(-(z2+im*(z0+z1)))
+  bt=bt+c(j)*anorm*exp(-(t2+im*(t0+t1)))
 end do
-zcorr=sum(bz)
-tcorr=sum(bt)
+zcorr=bz
+tcorr=bt
 
 return
+end subroutine
+!-----------------------------------------------------------------------------
+subroutine proj1D(nbt, qpas, c)
+
+integer, intent(in) :: nbt
+real*8, dimension(1:nbt,1:ndof,4), intent(in) :: qpas
+complex*16, dimension(1:nbt), intent(in) :: c
+
+integer :: i, j, n
+real*8 :: dq1, xi, fac, dq, dp, ds, rho
+complex*16 :: zn, ztot, wf, z
+
+complex*16, dimension(1:nbt,1:nbt) :: ov
+
+do i=1,nbt
+  do j=1,nbt
+    ztot=(1d0,0d0)
+    do n=2,ndof
+      fac=2d0*(qpas(i,n,3)*qpas(j,n,3))**0.25/dsqrt(2d0*qpas(i,n,3)+2d0*(qpas(j,n,3)))
+      dq=qpas(i,n,1)-qpas(j,n,1)
+      dp=qpas(i,n,2)-qpas(j,n,2)
+      ds=qpas(i,n,4)-qpas(j,n,4)
+      zn=dp**2+qpas(i,n,3)*qpas(j,n,3)*dq**2+2d0*im*(qpas(i,n,3)*(ds-qpas(j,n,2)*dq)+qpas(j,n,3)*(ds-qpas(i,n,2)*dq))
+      ztot = fac*ztot*exp(-zn/(2d0*(qpas(i,n,3)+qpas(j,n,3))))
+    end do
+    ov(i,j) = ztot
+  end do
+end do
+z=sum(matmul(reshape(conjg(c),(/1,nbt/)),matmul(ov,c)))
+
+dq1=(xdim(1,2)-xdim(1,1))/(npx-1)
+do i=1, npx
+  xi=xdim(1,1)+dq1*(i-1)
+
+  wf=(0d0,0d0)
+  do j=1,nbt
+    wf = wf+c(j)*(qpas(j,1,3)/pi)**0.25*exp(-qpas(j,1,3)/2.0*(xi-qpas(j,1,1))**2 &
+         +im*qpas(j,1,2)*(xi-qpas(j,1,1))+im*qpas(j,1,4))
+  end do
+  rho=real(z*conjg(wf)*wf)
+  write(202,*) xi, rho
+end do
+write(202,*) 
+
 end subroutine
 !-----------------------------------------------------------------------------
 subroutine dedq(nbt,gbc,ntrk,e,idedq,es,qsl,qsu,dedql,dedqu)

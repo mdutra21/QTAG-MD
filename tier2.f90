@@ -14,59 +14,30 @@ implicit none
 
 contains
 
-subroutine basis_diag(nbt, qpas, co, cn, evals)
+subroutine basis_diag(nbt, qpas, ov, H, co, cn, evals)
 
 integer, intent(in) :: nbt
 real*8, dimension(1:nbt,1:ndof,1:4), intent(in) :: qpas
+complex*16, dimension(1:nbt,1:nbt), intent(in) :: ov, H
 complex*16, dimension(1:nbt), intent(in) :: co
 complex*16, dimension(1:nbt), intent(out) :: cn
 real*8, dimension(1:nbt), intent(out) :: evals
 
 integer :: i, j, n, nvals, lwork, INFO
-complex*16 :: M, KE, V, zn
-
-real*8 :: abstol, dlamch, fac, dq, dp, ds
+real*8 :: abstol, dlamch
 
 integer, dimension(1:nbt) :: IFAIL
 integer, dimension(1:5*nbt) :: iwork
 real*8, dimension(1:7*nbt) :: rwork
 complex*16, dimension(1:nbt) :: c1
-complex*16, dimension(1:nbt,1:nbt) :: H, ov
+complex*16, dimension(1:nbt,1:nbt) :: err
 complex*16, allocatable :: work(:)
 complex*16, dimension(1:nbt,1:nbt) :: evecs
 
 lwork=4500
 allocate(work(lwork))
 
-do i=1,nbt
-  do j=1,nbt
-    M=(1d0,0d0)
-    KE=(0d0,0d0)
-    V=(0d0,0d0)
-    do n=1,ndof
-      fac=2d0*(qpas(i,n,3)*qpas(j,n,3))**0.25/dsqrt(2d0*qpas(i,n,3)+2d0*(qpas(j,n,3)))
-      dq=(qpas(i,n,1)-qpas(j,n,1))
-      dp=(qpas(i,n,2)-qpas(j,n,2))
-      ds=(qpas(i,n,4)-qpas(j,n,4))
-      zn=dp**2+qpas(i,n,3)*qpas(j,n,3)*dq**2+2d0*im*(qpas(i,n,3)*(ds-qpas(j,n,2)*dq)+qpas(j,n,3)*(ds-qpas(i,n,2)*dq))
-      M = fac*M*exp(-zn/(2d0*(qpas(i,n,3)+qpas(j,n,3))))
-    end do
-    call hamiltonian(qpas(i,:,:),qpas(j,:,:),KE,V)
-!      KE=KE+KE1
-!      V=V+V1
-    H(i,j) = M*(KE+V)
-  end do
-end do
-
-!do i=2,nbt
-!  do j=1,i-1
-!    H(j,i) = H(i,j)
-!  end do
-!end do
-
-call overlap(nbt,qpas(1:nbt,:,:),ov)
-call overlap_max(nbt,ov)
-
+err=ov
 abstol = 2d0*dlamch('S')
 call zhegvx(1, 'V', 'A', 'L', nbt, H, nbt, ov, nbt, 1.0, 2.0, 1, 2, abstol, &
             nvals, evals, evecs, nbt, work, lwork, rwork, iwork, IFAIL, INFO)
@@ -74,7 +45,16 @@ call zhegvx(1, 'V', 'A', 'L', nbt, H, nbt, ov, nbt, 1.0, 2.0, 1, 2, abstol, &
 if (INFO.ne.0) then
   write(*,*) "ERROR NUMBER:", INFO
   write(*,*) "basis_diag: Error in basis diagonalization!"
-  write(*,*) qpas(:,1,3)
+  write(*,*) 'POSITION INFO'
+  write(*,*) (qpas(INFO-nbt,n,1), n=1,ndof)
+  write(*,*) 'PHASE INFO'
+  write(*,*) (qpas(INFO-nbt,n,2), n=1,ndof)
+  write(*,*) 'WIDTH INFO'
+  write(*,*) (qpas(INFO-nbt,n,3), n=1,ndof)
+  write(*,*) 'OVERLAP INFO'
+  do n=1,nbt
+  write(*,*) err(INFO-nbt,n)
+  end do
   stop
 end if
 
@@ -121,16 +101,15 @@ end subroutine
 subroutine mom_fit(nbt, qpas, c, p, r, dp, dr)
 
 integer, intent(in) :: nbt
-real*8, dimension(1:nbt,1:ndof,4), intent(in) :: qpas
+real*8, dimension(1:nbt,1:ndof,1:4), intent(in) :: qpas
 complex*16, dimension(1:nbt), intent(in) :: c
 real*8, dimension(1:nbt,1:ndof), intent(inout) :: p, r, dp, dr
 
-integer :: i, j, k, n, INFO
-real*8 :: dq, fac, cpl1, cpl2, dvx, dvcpl
+integer :: i, j, n
+real*8 :: dq, fac
 complex*16 :: z, prod1
 
 real*8, dimension(1:nbt,1:ndof) :: zi, ri
-real*8, dimension(1:2,1:2) :: b, ov
 complex*16, dimension(1:ndof) :: dz
 
 do i=1,nbt
@@ -156,93 +135,32 @@ do i=1,nbt
   end do
 end do
 
-!p=zi
-!r=ri
+if (cls_chk.eqv..FALSE.) then
+!Quantum treatment of bath modes
+  p=zi
+  r=ri
 
+  do n=1,ndof
+    call qfit1D(nbt, n, qpas(1:nbt,:,:), c, p(1:nbt,n), r(1:nbt,n), dp(1:nbt,n), dr(1:nbt,n))
+  end do
+
+!  call qfit2D(nbt, qpas(1:nbt,:,:), p(1:nbt,:), r(1:nbt,:), dp(1:nbt,:), dr(1:nbt,:))
+
+else if (cls_chk.eqv..TRUE.) then
 !Classical treatment of bath modes.
+  p(:,1)=zi(:,1)
+  r(:,1)=ri(:,1)
 
-p(:,1)=zi(:,1)
-r(:,1)=ri(:,1)
+  call qfit1D(nbt, 1, qpas, c, p(1:nbt,1), r(1:nbt,1), dp(1:nbt,1), dr(1:nbt,1))
+  call cfitbath(nbt, qpas, p(1:nbt,1:ndof), dp(1:nbt,1:ndof))
 
-do i=1,nbt
   do n=2,ndof
-!    cpl1=dvcpl(qpas(i,n-1,1),qpas(i,n,1),1)+dvcpl(qpas(i,n-1,1),qpas(i,n,1),2)
-    cpl1=vcp*(qpas(i,n-1,1))
-    if (n.lt.ndof) then
-!      cpl2=dvcpl(qpas(i,n,1),qpas(i,n+1,1),1)+dvcpl(qpas(i,n,1),qpas(i,n+1,1),2)
-      cpl2=vcp*(qpas(i,n+1,1))
-    else
-      cpl2=0d0
-    end if
-    p(i,n)=p(i,n)-(2d0*0.5d0*qpas(i,n,1)+cpl1+cpl2)*dt
-    dp(i,n)=-(2d0*0.5d0*qpas(i,n,1)+cpl1+cpl2)*dt !Adaptable bath
-!    dp(i,n)=0d0 ! Frozen bath
+   r(:,n)=0d0
+   dr(:,n)=0d0
   end do
-end do
+end if
 
-  n=1
-  b=0d0
-  ov=0d0
-  do i=1,2
-    b(i,:) = 0d0
-    do k=1, nbt
-      call psi(qpas(k,:,1), nbt, c, qpas, z)
-!      b(i,1) = b(i,1)+p(k,n)*qpas(k,n,1)**(i-1) !not weighted
-!      b(i,2) = b(i,1)+r(k,n)*qpas(k,n,1)**(i-1) !not weighted
-      b(i,1) = b(i,1)+conjg(z)*z*p(k,n)*qpas(k,n,1)**(i-1) !weighted by psi**2
-      b(i,2) = b(i,1)+conjg(z)*z*r(k,n)*qpas(k,n,1)**(i-1) !weighted by psi**2
-    end do
-
-    do j=1,2
-      ov(j,i)=0d0
-      do k=1,nbt
-        call psi(qpas(k,:,1), nbt, c, qpas, z)
-!        ov(j,i)=ov(j,i)+qpas(k,n,1)**(i-1+j-1)
-        ov(j,i)=ov(j,i)+qpas(k,n,1)**(i-1+j-1)*conjg(z)*z
-      end do
-    end do
-  end do
-  call dposv('U',2,2,ov,2,b,2,INFO)
-  do k=1,nbt
-    p(k,n)=b(1,1)+b(2,1)*qpas(k,n,1)
-    r(k,n)=b(1,2)+b(2,2)*qpas(k,n,1)
-    dp(k,n)=b(2,1)
-    dr(k,n)=b(2,2)
-  end do
-!End classical bath.
-
-!Fitting for fully quantum DoFs
-!do n=1,ndof
-!  b=0d0
-!  ov=0d0
-!  do i=1,2
-!    b(i,:) = 0d0
-!    do k=1, nbt
-!      call psi(qpas(k,:,1), nbt, c, qpas, z)
-!!      b(i,1) = b(i,1)+p(k,n)*qpas(k,n,1)**(i-1) !not weighted
-!!      b(i,2) = b(i,1)+r(k,n)*qpas(k,n,1)**(i-1) !not weighted
-!      b(i,1) = b(i,1)+conjg(z)*z*p(k,n)*qpas(k,n,1)**(i-1) !weighted by psi**2
-!      b(i,2) = b(i,1)+conjg(z)*z*r(k,n)*qpas(k,n,1)**(i-1) !weighted by psi**2
-!    end do
-
-!    do j=1,2
-!      ov(j,i)=0d0
-!      do k=1,nbt
-!        call psi(qpas(k,:,1), nbt, c, qpas, z)
-!!        ov(j,i)=ov(j,i)+qpas(k,n,1)**(i-1+j-1) !not weighted
-!        ov(j,i)=ov(j,i)+qpas(k,n,1)**(i-1+j-1)*conjg(z)*z !weighted by psi**2
-!      end do
-!    end do
-!  end do
-!  call dposv('U',2,2,ov,2,b,2,INFO)
-!  do k=1,nbt
-!    p(k,n)=b(1,1)+b(2,1)*qpas(k,n,1)
-!    r(k,n)=b(1,2)+b(2,2)*qpas(k,n,1)
-!    dp(k,n)=b(2,1)
-!    dr(k,n)=b(2,2)
-!  end do
-!end do
-
+return
 end subroutine
 
 subroutine mom_conv(nbt, qpas, c, p, r, dp, dr, iconv)
@@ -262,6 +180,11 @@ real*8, dimension(1:nbt,1:nbt) :: wdw
 real*8, dimension(1:nbt,1:ndof) :: zi, ri, ppl, rpl, pmn, rmn, po
 real*8, dimension(1:ndof) :: delta
 complex*16, dimension(1:ndof) :: dz
+
+if (cls_chk.eqv..TRUE.) then
+  write(*,*) "MOMENTUM CONVOLUTION DOESN'T YET SUPPORT CLASSICAL BATH!"
+  stop
+end if
 
 po=p
 !For convolution of momentum.
@@ -458,6 +381,11 @@ real*8, dimension(1:nbt,1:ndof) :: zi, ri, ppl, rpl, pmn, rmn
 real*8, dimension(1:ndof) :: delta
 complex*16, dimension(1:ndof) :: dz
 
+if (cls_chk.eqv..TRUE.) then
+  write(*,*) "WAVEFUNCTION CONVOLUTION DOESN'T YET SUPPORT CLASSICAL BATH!"
+  stop
+end if
+
 b1=0d0
 !For convolution of the wavefunction, psi_b.
 !Wavefunction convolution for fully adaptable basis.
@@ -613,6 +541,154 @@ do j=1,nbt
   end do
 end do
 !End artificial basis repulsion.
+
+return
+end subroutine
+
+subroutine qfit1D(nbt, sn, qpas, c, sp, sr, sdp, sdr)
+!Fitting for fully quantum DoFs, where px and py are independent.
+
+integer, intent(in) :: nbt, sn
+real*8, dimension(1:nbt,1:ndof,1:4), intent(in) :: qpas
+real*8, dimension(1:nbt), intent(inout) :: sp, sr, sdp, sdr
+complex*16, dimension(1:nbt), intent(in) :: c
+
+integer :: i, j, k, INFO
+complex*16 :: z
+
+real*8, dimension(1:2,1:2) :: b, ov
+
+b=0d0
+ov=0d0
+do i=1,2
+  b(i,:) = 0d0
+  do k=1, nbt
+    call psi(qpas(k,:,1), nbt, c, qpas, z)
+!    b(i,1) = b(i,1)+sp(k)*qpas(k,sn,1)**(i-1) !not weighted
+!    b(i,2) = b(i,1)+sr(k)*qpas(k,sn,1)**(i-1) !not weighted
+    b(i,1) = b(i,1)+conjg(z)*z*sp(k)*qpas(k,sn,1)**(i-1) !weighted by psi**2
+    b(i,2) = b(i,2)+conjg(z)*z*sr(k)*qpas(k,sn,1)**(i-1) !weighted by psi**2
+  end do
+
+  do j=1,2
+    ov(j,i)=0d0
+    do k=1,nbt
+      call psi(qpas(k,:,1), nbt, c, qpas, z)
+!      ov(j,i)=ov(j,i)+qpas(k,sn,1)**(i-1+j-1) !not weighted
+      ov(j,i)=ov(j,i)+qpas(k,sn,1)**(i-1+j-1)*conjg(z)*z !weighted by psi**2
+    end do
+  end do
+end do
+
+call dposv('U',2,2,ov,2,b,2,INFO)
+
+do k=1,nbt
+  sp(k)=b(1,1)+b(2,1)*qpas(k,sn,1)
+  sr(k)=b(1,2)+b(2,2)*qpas(k,sn,1)
+  sdp(k)=b(2,1)
+  sdr(k)=b(2,2)
+end do
+
+return
+end subroutine
+
+subroutine cfitbath(nbt, qpas, p, dp)
+!Update of p and dp for classical bath; no fitting.
+
+integer, intent(in) :: nbt
+real*8, dimension(1:nbt,1:ndof,1:4), intent(in) :: qpas
+real*8, dimension(1:nbt,1:ndof), intent(inout) :: p, dp
+
+integer :: i, n
+real*8 :: cpl1, cpl2
+
+if (potvar.ne.'BM2') then
+  do i=1,nbt
+    do n=2,ndof
+!      cpl1=dvcpl(qpas(i,n-1,1),qpas(i,n,1),1)+dvcpl(qpas(i,n-1,1),qpas(i,n,1),2)
+      cpl1=vcp*(qpas(i,n-1,1))
+      if (n.lt.ndof) then
+!        cpl2=dvcpl(qpas(i,n,1),qpas(i,n+1,1),1)+dvcpl(qpas(i,n,1),qpas(i,n+1,1),2)
+        cpl2=vcp*(qpas(i,n+1,1))
+      else
+        cpl2=0d0
+      end if
+      p(i,n)=p(i,n)-(2d0*0.5d0*qpas(i,n,1)+cpl1+cpl2)*dt
+      dp(i,n)=0d0 ! Frozen b/c classical DoFs are coherent.
+    end do
+  end do
+else
+  do i=1,nbt
+    do n=2,ndof
+!      cpl1=dvcpl(qpas(i,n-1,1),qpas(i,n,1),1)+dvcpl(qpas(i,n-1,1),qpas(i,n,1),2)
+      cpl1=2d0*vcp*qpas(i,1,1)*qpas(i,n,1)
+      p(i,n)=p(i,n)-(2d0*0.5d0*qpas(i,n,1)+cpl1)*dt
+      dp(i,n)=0d0 ! Frozen b/c classical DoFs are coherent.
+    end do
+  end do
+end if
+
+return
+end subroutine
+
+subroutine qfit2D(nbt, qpas, p, r, dp, dr)
+!Fitting for fully quantum DoFs, where px and py are codependent.
+
+integer, intent(in) :: nbt
+real*8, dimension(1:nbt,1:ndof,1:4), intent(in) :: qpas
+real*8, dimension(1:nbt,1:ndof), intent(inout) :: p, r, dp, dr
+
+integer :: i, k, n, INFO
+real*8 :: qq
+
+real*8, dimension(1:3,1:3) :: b2
+real*8, dimension(1:3,1:4) :: ov2
+
+if (ndof.ne.2) then
+  write(*,*) '2D fitting invoked for N!=2'
+  stop
+end if
+
+b2=0d0
+do i=1,ndof+1
+  do n=1,ndof
+    do k=1, nbt
+!      call psi(qpas(k,:,1), nbt, c, qpas, z)
+      if (i.lt.ndof+1) then
+        qq=qpas(k,i,1)
+      else
+        qq=1d0
+      end if
+      b2(i,2*n-1) = b2(i,2*n-1)+p(k,n)*qq
+      b2(i,2*n) = b2(i,2*n)+r(k,n)*qq
+    end do
+  end do
+end do
+
+ov2=0d0
+do k=1,nbt
+!  call psi(qpas(k,:,1), nbt, c, qpas, z)
+  ov2(1,1)=ov2(1,1)+qpas(k,1,1)**2
+  ov2(1,2)=ov2(1,2)+qpas(k,1,1)*qpas(k,2,1)
+  ov2(1,3)=ov2(1,3)+qpas(k,1,1)
+  ov2(2,2)=ov2(2,2)+qpas(k,2,1)**2
+  ov2(2,3)=ov2(2,3)+qpas(k,2,1)
+  ov2(3,3)=ov2(3,3)+1
+end do
+ov2(2,1)=ov2(1,2)
+ov2(3,1)=ov2(1,3)
+ov2(3,2)=ov2(2,3)
+
+call dposv('U',3,4,ov2,3,b2,3,INFO)
+
+do n=1,ndof
+  do k=1,nbt
+    p(k,n)=b2(1,2*n-1)*qpas(k,1,1)+b2(2,2*n-1)*qpas(k,2,1)+b2(3,2*n-1)
+    r(k,n)=b2(1,2*n)*qpas(k,1,1)+b2(2,2*n)*qpas(k,2,1)+b2(3,2*n)
+    dp(k,n)=b2(n,2*n-1)
+    dr(k,n)=b2(n,2*n)
+  end do
+end do
 
 return
 end subroutine

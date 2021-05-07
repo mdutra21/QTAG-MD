@@ -8,6 +8,7 @@ module propagators
 
 use constants
 use tier2
+use potentials
 implicit none
 
 contains
@@ -22,7 +23,7 @@ complex*16, dimension(1:nbt), intent(in) :: c
 complex*16, dimension(1:nbt,1:nbt), intent(out) :: ov_no
 
 integer :: i, j, k, n, n1
-real*8 :: z1, z2, dq, dpb, ds, fac, V, vx, vcpl, qmax, qmin
+real*8 :: dq, dpb, ds, fac, V, qmax, qmin
 complex*16 :: ovtot, zn
 
 real*8, dimension(1:nbt,1:ndof,1:4) :: qpasn
@@ -33,11 +34,24 @@ real*8, dimension(1:nbt,1:ndof) :: dp, r, dr
 !Calculate new p and r according to Im(dpsi/psi) and Re(dpsi/psi).
 call momentum(nbt, qpas, c, p, r, dp, dr)
 
-!All of p and r should be scaled if not using classical DoFs
-p(:,1)=p(:,1)/2d0
-dp(:,1)=dp(:,1)/2d0
-r=r/2d0
-dr=dr/2d0
+!Momentum output...
+!do i=1,nbt
+!write(208,*) (p(i,n), n=1,ndof)
+!end do
+
+!All of p and r should be scaled if not using classical DoFs and tunneling
+!system.
+if (cls_chk.eqv..FALSE.) then
+  p=p/2d0
+  dp=dp/2d0
+  r=r/2d0
+  dr=r/2d0
+else if (cls_chk.eqv..TRUE.) then
+  p(:,1)=p(:,1)/2d0
+  dp(:,1)=dp(:,1)/2d0
+  r(:,1)=r(:,1)/2d0
+  dr(:,1)=dr(:,1)/2d0
+end if
 
 !open(222,file='mom.txt',access='append')
 !do k=1,nbt
@@ -82,20 +96,12 @@ end select
 
 select case(pvar)
 case ("ADPT")
-!  if (iter.gt.1) then
-    do k=1,nbt
-      do n=1, ndof
+  do k=1,nbt
+    do n=1, ndof
 !        qpasn(k,n,2)=p(k,n)/2d0
         qpasn(k,n,2)=p(k,n)
-      end do
     end do
-!  else
-!    do k=1,nbt
-!      do n=1, ndof
-!        qpasn(k,n,2)=qpas(k,n,2)
-!      end do
-!    end do
-!  end if    
+  end do
 case ("FRZN")
   do k=1,nbt
     do n=1, ndof
@@ -108,10 +114,6 @@ end select
 select case(qvar)
 case ("ADPT")
 do k=1, nbt
-!  qpasn(k,1,1)=qpas(k,1,1)+p(k,1)*dt/(2d0*ms(1))
-!  do n=2, ndof
-!    qpasn(k,n,1) = qpas(k,n,1)+p(k,n)*dt/(ms(n))
-!  end do
   do n=1, ndof
     qpasn(k,n,1) = qpas(k,n,1)+p(k,n)*dt/(ms(n))
   end do
